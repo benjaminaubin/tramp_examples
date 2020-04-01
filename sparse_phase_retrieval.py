@@ -190,5 +190,5 @@ if __name__ == "__main__":
             f'Data/PR_rho={params["rho"]:.2f}_N={params["N"]}.pkl')
 
     ## Plot ##
-    save_fig = True
+    save_fig = False
     plot_sparse_PR(dic, block=True, save_fig=True)

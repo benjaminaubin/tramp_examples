@@ -368,16 +368,17 @@ if __name__ == "__main__":
     algos = dict((name, algos_tab[name])
                  for name in algos_tab.keys())
 
-    ## Run benchmark ##
+    
     # Average experiment
     n_samples = 1
-    # Number of points between [0:1]
+    # Number of points
     n_points = 50
-
+    ## Run benchmark ##
     dics = run_experiment_mse_alpha(
         algos, rho=rho, Delta=Delta, N=N,
         n_samples=n_samples, n_points=n_points,
         save_data=False, verbose=False, seed=seed
     )
 
+    ## Plot ##
     plot_sparse_linear_benchmark(dics, save_fig=False)
