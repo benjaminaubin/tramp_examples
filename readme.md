@@ -10,7 +10,7 @@ This repo contains the few different examples presented in the above paper avail
 ### Notebooks (Python 3.6)
 - [Sparse FFT](sparse_fft.ipynb) teacher-student scenario
 - [Sparse gradient](sparse_gradient.ipynb) teacher-student scenario
-- [Inpainting and denoising](inpainting_denoising_VAE.ipynb) on MNIST/FashionMNIST using a VAE prior trained the same dataset
+- [Inpainting and denoising](inpainting_denoising_VAE.ipynb) on MNIST/FashionMNIST using a VAE prior trained on the same dataset
 
 ### Scripts (Python 3.6)
 - [Sparse linear](sparse_linear_benchmark.py) benchmark: TRAMP EP vs TRAMP SE vs Lasso Scikit-Learn vs PyMC3
