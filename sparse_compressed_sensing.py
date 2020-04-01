@@ -4,16 +4,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from utils.functions import save_object, load_object, mean_squared_error
 
-from tramp.models import glm_generative, glm_state_evolution
-from tramp.algos import ConstantInit, NoisyInit, CustomInit
-from tramp.experiments import BayesOptimalScenario, TeacherStudentScenario
-from tramp.priors import GaussBernouilliPrior, GaussianPrior, MAP_LaplacePrior
-from tramp.likelihoods import GaussianLikelihood, AsymmetricAbsLikelihood
-from tramp.channels import GaussianChannel, LinearChannel, AbsChannel, SgnChannel, AsymmetricAbsChannel
+from tramp.algos import CustomInit
+from tramp.experiments import BayesOptimalScenario
+from tramp.priors import GaussBernouilliPrior
+from tramp.channels import GaussianChannel, LinearChannel
 from tramp.ensembles import GaussianEnsemble
-from tramp.algos import ConstantInit, NoisyInit
-from tramp.variables import SISOVariable as V, SILeafVariable as O, MILeafVariable, SIMOVariable
-from tramp.algos import ExpectationPropagation, EarlyStoppingEP, TrackEvolution, TrackErrors
+from tramp.variables import SISOVariable as V, SILeafVariable as O
+from tramp.algos import EarlyStopping
 
 
 def plot_sparse_CS(dic, save_fig=False, block=False):
