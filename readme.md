@@ -1,5 +1,5 @@
-## TRAMP: Compositional Inference with TRee ApproximateMessage Passing
-#### Antoine Baker, Benjamin Aubin, Florent Krzakala, Lenka Zdeborova
+## TRAMP: Compositional Inference with TRee Approximate Message Passing
+#### Antoine Baker, Benjamin Aubin, Florent Krzakala, Lenka Zdeborová
 
 ### Abstract:
 We introduce tramp, standing for TRee Approximate Message Passing, a python package for compositional inference in Python that runs Expectation Propagation on high-dimensional tree-structured models. The package provides an unifying framework to study several approximate message passing algorithms previously derived for a variety of machine learning tasks such as generalized linear models, inference in multi-layer networks, matrix factorization, and reconstruction using non-separable penalties. For some models, the performance of the algorithm can be theoretically predicted by the state evolution, and the measurements entropy estimated by the free entropy formalism. The implementation is modular by design: each module, which implements a factor, can be composed at will with other modules to solve complex inference tasks. The user only needs to declare the factor graph of the model: the inference algorithm, state evolution and entropy estimation are fully automated. The source code is publicly available at [https://github.com/sphinxteam/tramp](https://github.com/sphinxteam/tramp).
