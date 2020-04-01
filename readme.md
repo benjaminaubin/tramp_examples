@@ -15,3 +15,4 @@ This repo contains the few different examples presented in the above paper avail
 ### Scripts (Python 3.6)
 - [Sparse linear](sparse_linear_benchmark.py) benchmark: TRAMP EP vs TRAMP SE vs Lasso Scikit-Learn vs PyMC3
 - [Sparse compressed sensing](sparse_compressed_sensing.py): produce MSE curves as a function of alpha at fixed rho
+- [Sparse phase retrieval](sparse_phase_retrieval.py): produce MSE curves as a function of alpha at fixed rho
