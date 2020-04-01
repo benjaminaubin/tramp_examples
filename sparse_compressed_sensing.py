@@ -1,6 +1,7 @@
 from utils.plot.import_library_plot import *
 import numpy as np
 import pandas as pd
+import os
 import matplotlib.pyplot as plt
 from utils.functions import save_object, load_object, mean_squared_error
 
@@ -75,69 +76,73 @@ class Compressed_Sensing():
         self.scenario = self.build_scenario(seed)
 
     def build_model(self):
-        self.prior = GaussBernouilliPrior(size=(self.N,), rho=self.rho)
+        prior = GaussBernouilliPrior(size=self.N, rho=self.rho)
         ensemble = GaussianEnsemble(self.M, self.N)
-        self.A = ensemble.generate()
-        model = self.prior @ V(id="x") @ LinearChannel(W=self.A) @ V(
-            id='z') @ GaussianChannel(var=1e-10) @ O(id="y")
+        W = ensemble.generate()
+        model = prior @ V(id="x") @ LinearChannel(
+            W=W, name='W') @ V(id="z") @ GaussianChannel(1e-10) @ O(id="y")
         model = model.to_model()
         return model
 
     def build_scenario(self, seed):
-        scenario = BayesOptimalScenario(self.model)
+        scenario = BayesOptimalScenario(self.model, x_ids=["x"])
         scenario.setup(seed=seed)
         return scenario
 
 
 def run_ep(scenario, settings, n_samples=10):
-    # Initialization with constant beliefs #
-    initializer = ConstantInit(a=0.01, b=0.01)
-    callback = None
+    callback = EarlyStopping(wait_increase=10)
     tab_mse = {'mse_ep': [], 'mse': []}
 
     # Average EP over n_samples #
     for i in range(n_samples):
         scenario.setup(seed=i)
         ep_x_data = scenario.run_ep(
-            max_iter=settings['max_iter'], callback=callback,
-            initializer=initializer, damping=settings['damping'])
+            max_iter=settings['max_iter'],
+            callback=callback,
+            damping=settings['damping'])
         mse = mean_squared_error(scenario.x_pred['x'], scenario.x_true['x'])
         tab_mse['mse'].append(mse)
         tab_mse['mse_ep'].append(ep_x_data['x']['v'])
     mse, mse_ep = np.mean(tab_mse['mse']), np.mean(tab_mse['mse_ep'])
+
     print(f'mse ep:{mse_ep:.3e}')
     return mse
 
 
 def run_se(scenario, settings):
-    ## Setup ##
-    # Use seed or not #
-    seed = False
-    scenario.setup(seed=seed)
+    callback = EarlyStopping(wait_increase=10)
 
-    # UNIformative Initialization #
-    initializer = ConstantInit(a=0.01, b=0.01)
+    # UNI-nformative Initialization #
+    a_init = [("x", "bwd", 0.1)]
+    initializer = CustomInit(a_init=a_init)
     data_se = scenario.run_se(
-        max_iter=settings['max_iter'], damping=settings['damping'], initializer=initializer)
+        max_iter=settings["max_iter"],
+        damping=settings['damping'],
+        initializer=initializer,
+        callback=callback)
     mse_se_uni = data_se['x']['v']
     print(f'mse se uni:{mse_se_uni:.3e}')
 
-    # INFormative Initialization #
+    # INF-ormative Initialization #
     # Adapt the informative initialization with alpha to:
     # - avoid issues at low alpha if init too large
     # - obtain the true IT transition
-    assert params['alpha'] <= 1
     power = 3 * np.exp(params['alpha'])
-    initializer = CustomInit(a_init=[('x', '->', '0')], a=10**(power))
+    a_init = [("x", "bwd", 10**power)]
+    initializer = CustomInit(a_init=a_init)
     data_se = scenario.run_se(
-        max_iter=settings['max_iter'], damping=settings['damping'], initializer=initializer)
+        max_iter=settings["max_iter"],
+        damping=settings['damping'],
+        initializer=initializer,
+        callback=callback)
     mse_se_inf = data_se['x']['v']
     print(f'mse se inf:{mse_se_inf:.3e}')
 
     return mse_se_uni, mse_se_inf
 
 
-def compute_mse_curve(params, settings, n_points=10, n_samples=1):
+def compute_mse_curve(params, settings, n_points=10, n_samples=1, seed=False, save_data=False):
     tab_alpha_ = np.linspace(0.0025, 1, n_points)
     dic = {key: [] for key in ['tab_alpha',
                                'tab_mse_se_inf', 'tab_mse_se_uni', 'tab_mse_ep']}
@@ -145,7 +150,7 @@ def compute_mse_curve(params, settings, n_points=10, n_samples=1):
         # Create TRAMP instance #
         print(f'\n alpha:{alpha}')
         params['alpha'] = alpha
-        cs = Compressed_Sensing(params)
+        cs = Compressed_Sensing(params, seed)
         scenario = cs.scenario
         # Run TRAMP EP ##
         mse_ep = run_ep(scenario, settings, n_samples=n_samples)
@@ -158,6 +163,12 @@ def compute_mse_curve(params, settings, n_points=10, n_samples=1):
         dic['tab_mse_se_uni'].append(mse_uni)
         dic['tab_mse_ep'].append(mse_ep)
 
+    if save_data:
+        dir_data = 'Data'
+        file_name = f'{dir_data}/CS_rho={params["rho"]:.2f}_N={params["N"]}.pkl'
+        os.makedirs(dir_data) if not os.path.exists(dir_data) else 0
+        save_object(dic, file_name)
+
     return dic
 
 
@@ -166,9 +177,19 @@ if __name__ == "__main__":
     params = {'N': 1000, 'rho': 0.5}
     settings_ep = {'damping': 0.1, 'max_iter': 200}
     settings_exp = {'n_points': 50, 'n_samples': 1}
+    seed = True
 
     ## Compute and plot MSE curve as a function of alpha ##
-    dic = compute_mse_curve(
-        params, settings_ep, n_points=settings_exp['n_points'], n_samples=settings_exp['n_samples'])
-    # Plot #
-    plot_sparse_CS(dic, block=True)
+    load_data = False
+    save_data = False
+    if not load_data:
+        dic = compute_mse_curve(params, settings_ep,
+                                n_points=settings_exp['n_points'], n_samples=settings_exp['n_samples'],
+                                seed=seed, save_data=save_data)
+    else:
+        dic = load_object(
+            f'Data/CS_rho={params["rho"]:.2f}_N={params["N"]}.pkl')
+
+    ## Plot ##
+    save_fig = False
+    plot_sparse_CS(dic, block=True, save_fig=True)
