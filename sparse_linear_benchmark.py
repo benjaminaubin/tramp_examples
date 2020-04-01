@@ -1,6 +1,6 @@
 
 from utils.plot.import_library_plot import *
-from utils.functions import save_object, load_object, mean_squared_error, sort_lists
+from utils.functions import save_object, load_object, sort_lists
 import numpy as np
 import os
 import time
@@ -8,15 +8,20 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
 
-from tramp.priors import GaussBernouilliPrior, GaussianPrior, MAP_LaplacePrior
+# Tramp package
+from tramp.priors import GaussBernouilliPrior
 from tramp.likelihoods import GaussianLikelihood
 from tramp.channels import GaussianChannel, LinearChannel, AnalyticalLinearChannel
 from tramp.ensembles import GaussianEnsemble, MarchenkoPasturEnsemble
-from tramp.algos import ConstantInit, NoisyInit, CustomInit
-from tramp.variables import SISOVariable as V, SILeafVariable as O, MILeafVariable, SIMOVariable
-from tramp.algos import ExpectationPropagation, EarlyStoppingEP, TrackEvolution, TrackErrors, StateEvolution
+from tramp.algos import CustomInit
+from tramp.algos.metrics import mean_squared_error
+from tramp.variables import SISOVariable as V, SILeafVariable as O
+from tramp.algos import ExpectationPropagation, StateEvolution, EarlyStopping
 
-from sklearn.linear_model import Lasso, LassoCV
+# Scikit-learn
+from sklearn.linear_model import LassoCV
+
+# PyMC3
 import pymc3 as pm
 
 import logging
@@ -24,31 +29,41 @@ logger = logging.getLogger()
 logger.setLevel(logging.ERROR)
 
 
-def plot_sparse_linear_benchmark(dics_Bayes, save_fig=False, block=True):
+def plot_sparse_linear_benchmark(dics, save_fig=False, block=True):
     n = 2
     fig, axs = plt.subplots(1, 2, figsize=(6*n, 6))
     tab_col = plt.rcParams['axes.prop_cycle'].by_key()['color']
     plt.rcParams['lines.linewidth'] = 1.75
     i = 0
-    for key in dics_Bayes.keys():
-        tab_marker = {'Pymc3Bayes': 'o', 'TrampBayes': 'x--',
-                      'LassoCV': '^--', 'TrampSE': '-'}
+    for key in dics.keys():
+        tab_marker = {
+            'Pymc3Bayes': 'o',
+            'TrampBayes': 'x--',
+            'LassoCV': '^--',
+            'TrampSE': '-'
+        }
         tab_color = {
-            'Pymc3Bayes': tab_col[1], 'TrampBayes': tab_col[0], 'LassoCV': tab_col[2], 'TrampSE': 'k'}
-        tab_label = {'Pymc3Bayes': r'PyMC3',
-                     'TrampBayes': r'Tramp', 'LassoCV': 'Lasso', 'TrampSE': 'Bayes opt.'}
+            'Pymc3Bayes': tab_col[1],
+            'TrampBayes': tab_col[0],
+            'LassoCV': tab_col[2],
+            'TrampSE': 'k'
+        }
+        tab_label = {
+            'Pymc3Bayes': r'PyMC3',
+            'TrampBayes': r'Tramp',
+            'LassoCV': 'Lasso',
+            'TrampSE': 'Bayes opt.'
+        }
 
-        tab_x = np.array(dics_Bayes[key]['tab_alpha'])
-        tab_y = np.array(dics_Bayes[key]['tab_mse'])
+        tab_x = np.array(dics[key]['tab_alpha'])
+        tab_y = np.array(dics[key]['tab_mse'])
 
-        if key == 'Pymc3Bayes':
-            tab_y += 1e-9
         tab_x, tab_y = sort_lists(tab_x, tab_y)
-        axs[0].plot(tab_x, tab_y / 0.05, tab_marker[key],
+        axs[0].plot(tab_x, tab_y / dics['TrampSE'], tab_marker[key],
                     c=tab_color[key], label=tab_label[key])
 
-        tab_x = np.array(dics_Bayes[key]['tab_alpha'])
-        tab_y = np.array(dics_Bayes[key]['tab_time'])
+        tab_x = np.array(dics[key]['tab_alpha'])
+        tab_y = np.array(dics[key]['tab_time'])
 
         tab_x, tab_y = sort_lists(tab_x, tab_y)
         if key in ['TrampBayes', 'Pymc3Bayes']:
@@ -224,7 +239,7 @@ class compare_tramp_lasso_pymc3(object):
 
         ep = ExpectationPropagation(student)
         ep.iterate(
-            max_iter=max_iter, damping=damping, callback=EarlyStoppingEP(tol=1e-8))
+            max_iter=max_iter, damping=damping, callback=EarlyStopping(tol=1e-8))
         data_ep = ep.get_variables_data(['x'])
         mse = mean_squared_error(
             data_ep['x']['r'], self.data['x_true'])
@@ -359,10 +374,10 @@ if __name__ == "__main__":
     # Number of points between [0:1]
     n_points = 50
 
-    dic = run_experiment_mse_alpha(
+    dics = run_experiment_mse_alpha(
         algos, rho=rho, Delta=Delta, N=N,
         n_samples=n_samples, n_points=n_points,
         save_data=False, verbose=False, seed=seed
     )
 
-    plot_sparse_linear_benchmark(dic, save_fig=False)
+    plot_sparse_linear_benchmark(dics, save_fig=False)

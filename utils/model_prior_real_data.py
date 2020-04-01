@@ -5,17 +5,16 @@ import h5py
 import time
 import copy
 import matplotlib.pyplot as plt
-import tramp
 
 # Tramp package
+import tramp
+from tramp.algos import EarlyStopping, ExpectationPropagation, TrackEstimate, NoisyInit
 from tramp.algos.metrics import mean_squared_error
-from tramp.algos import NoisyInit
-from tramp.algos import EarlyStopping, ExpectationPropagation, JoinCallback, TrackEstimate
 from tramp.ensembles import GaussianEnsemble
 from tramp.variables import SISOVariable as V, SILeafVariable as O, MISOVariable as M
 from tramp.likelihoods import GaussianLikelihood
 from tramp.priors import GaussianPrior
-from tramp.channels import LinearChannel, ReshapeChannel, LeakyReluChannel, ReluChannel, HardTanhChannel, BiasChannel
+from tramp.channels import LinearChannel, ReshapeChannel, LeakyReluChannel, HardTanhChannel, BiasChannel
 
 # Specific to keras
 from keras.datasets import mnist, fashion_mnist
@@ -28,13 +27,13 @@ class Model_Prior():
 
         - with models:
             * denoising : model(x) = x
-            * inpainting: model(x) = x with n_rem deleted elements
+            * inpainting: model(x) = x with n_rem erased elements
 
         - with x_star drawn from:
-            * mnist
-            * fashion mnist
+            * mnist test set
+            * fashion mnist test set
 
-        - trained with a prior:
+        - trained with a VAE prior:
             VAE: [(20, 400) -> relu + bias -> (400, 784) -> sigmoid + bias]
     """
 
@@ -42,15 +41,13 @@ class Model_Prior():
                  data_params={'name': 'mnist', 'category': 0},
                  prior_params={'name': 'VAE', 'type': 'mnist',
                                'id': '20_relu_400_sigmoid_784_bias'},
-                 Delta=0.5, seed=False,
-                 plot_prior_sample=False, plot_truth_vs_pred=False):
+                 seed=False, plot_prior_sample=False):
         # Directory
         self.dir = 'utils/'
 
-        # Model properties
+        # Model params
         self.model_params = model_params
         self.N = model_params['N']
-        self.Delta = Delta
 
         # Data params
         self.data_params = data_params
@@ -63,14 +60,6 @@ class Model_Prior():
 
         # Plot
         self.plot_prior_sample = plot_prior_sample
-        self.plot_truth_vs_pred = plot_truth_vs_pred
-
-        # Damping variables
-        self.list_var = []
-
-        # Callback
-        self.x_tracker = TrackEstimate(ids="x", every=100)
-        self.callback = self.x_tracker
 
     def setup(self):
         # Build prior module
@@ -114,9 +103,6 @@ class Model_Prior():
                        LinearChannel(W1, name="W_1") @ V(id="Wz_1") @ BiasChannel(b1) @ V(id="b_1") @ LeakyReluChannel(0) @ V(id="z_1") @
                        LinearChannel(W2, name="W_2") @ V(id="Wz_2") @ BiasChannel(b2) @ V(id="b_2") @ HardTanhChannel() @ V(id="z_2") @
                        ReshapeChannel(prev_shape=self.N, next_shape=self.shape))
-            self.list_var.extend(
-                ['z_0', 'Wz_1', 'Wz_2', 'z_1', 'z_2', 'b_1', 'b_2'])
-
         else:
             raise NotImplementedError
 
@@ -151,12 +137,13 @@ class Model_Prior():
                 ax.set_axis_off()
                 ax.imshow(sample.reshape(28, 28), cmap="gray")
 
-            print(os.getcwd())
-            file_name = f"/Images/Prior_{self.prior_params['name']}_{self.prior_params['type']}_{self.prior_params['id']}.pdf"
+            dir_fig = 'Figures/'
+            os.makedirs(dir_fig) if not os.path.exists(dir_fig) else 0
+            file_name = f"/{dir_fig}Prior_{self.prior_params['name']}_{self.prior_params['type']}_{self.prior_params['id']}.pdf"
             plt.savefig(file_name, format='pdf', dpi=1000,
                         bbox_inches="tight", pad_inches=0.1)
-            plt.show(block=False)
-            # input("...")
+            plt.show(block=True)
+            input("...")
             plt.close()
 
     def init_model(self, prior_x):
@@ -167,35 +154,31 @@ class Model_Prior():
             model = prior_x @ V(id="x")
             # Variables
             self.x_ids = ['x']
-            self.list_var.extend(['x'])
 
         elif self.model_params['name'] == 'inpainting':
             # Create sensing matrix
-            N_rem = self.model_params['N_rem']
             N = self.model_params['N']
             F = np.identity(N)
+            p_rem = self.model_params['p_rem']
 
             ## Remove a Band ##
             if self.model_params['type'] == 'band':
-                self.model_params['alpha'] = N_rem
-                N_rem = int(N_rem * N / 100)
+                N_rem = int(p_rem * N / 100)
                 id_0 = int(N/2) - int(N_rem/2)
                 for rem in range(id_0, id_0+N_rem):
                     F[rem, rem] = 0
 
             ## Remove randomly ##
-            if self.model_params['type'] == 'random':
-                #print(int(N_rem * N / 100), N_rem)
-                self.model_params['alpha'] = N_rem
+            if self.model_params['type'] == 'uniform':
                 tab = np.arange(1, N)
                 np.random.shuffle(tab)
-                for i in range(int(N_rem * N / 100)):
+                for i in range(int(p_rem * N / 100)):
                     rem = tab[i]
                     F[rem, rem] = 0
 
             ## Diagonal ##
             if self.model_params['type'] == 'diagonal':
-                l = int(N_rem * 28 / 100)
+                l = int(p_rem * 28 / 100)
                 for j in range(-int(l/2), int(l/2), 1):
                     for i in range(1, 27, 1):
                         ind = i * 28 + i + j
@@ -214,7 +197,6 @@ class Model_Prior():
 
             # Variables
             self.x_ids = ['x']
-            self.list_var.extend(['x'])
 
         else:
             raise NotImplementedError
@@ -264,45 +246,51 @@ class Model_Prior():
         return y
 
     def channel(self, x):
-        # denoising
         if self.model_params['name'] == 'denoising':
-            noise = np.sqrt(self.Delta) * np.random.randn(self.N)
-            #n = np.linalg.norm(x)
+            noise = np.sqrt(
+                self.model_params['Delta']) * np.random.randn(self.N)
             y = x + noise
-
-        # inpainting
         elif self.model_params['name'] == 'inpainting':
             y = self.F @ x
             self.y_inp = self.F_tot @ x
-
         else:
             raise NotImplementedError
-
         return y
 
     def build_model(self, model, y):
-        model = model @ GaussianLikelihood(y=y, var=self.Delta)
+        if self.model_params['name'] == 'denoising':
+            Delta = self.model_params['Delta']
+        elif self.model_params['name'] == 'inpainting':
+            Delta = 1e-2
+        model = model @ GaussianLikelihood(y=y, var=Delta)
         model = model.to_model_dag()
         return model
 
-    def run_ep(self, max_iter=250, initializer=None, check_decreasing=True, damping=True, coef_damping=0.5):
-        self.max_iter = max_iter
+    def run_ep(self, max_iter=250, damping=0.5):
         # Initialization
         initializer = NoisyInit()
 
-        # Damping variables
-        variables_damping = self.build_variable_damping(coef_damping)
+        # Callback
+        x_tracker = TrackEstimate(ids="x", every=100)
+        callback = x_tracker
 
         # EP iterations
         ep = ExpectationPropagation(self.model)
         ep.iterate(
-            max_iter=max_iter, callback=self.callback, initializer=initializer, damping=0.5)
-        track = self.x_tracker.get_dataframe()
-        ep_x_data = ep.get_variables_data(self.x_ids)
-        ep_x_data_evo = track.loc[track['id'] == 'x']
-        return ep_x_data, ep_x_data_evo
+            max_iter=max_iter,
+            callback=callback,
+            initializer=initializer,
+            damping=damping
+        )
 
-    ### Annex functions ###
+        df_track = x_tracker.get_dataframe()
+        ep_x_data = ep.get_variables_data(self.x_ids)
+        #ep_x_data_evo = df_track.loc[df_track['id'] == 'x']
+
+        mse_ep, mse = self.compute_mse(ep_x_data)
+        return mse_ep, mse
+
+    ## Annex functions ##
     def compute_mse(self, ep_x_data):
         self.x_pred = {x_id: data["r"] for x_id, data in ep_x_data.items()}
 
@@ -313,91 +301,5 @@ class Model_Prior():
         self.mse = min(mean_squared_error(self.x_true['x'], self.x_pred['x']), mean_squared_error(
             self.x_true['x'], -self.x_pred['x']))
 
-        #print(np.min(self.x_pred['x']), np.max(self.x_pred['x']), np.mean(self.x_pred['x']), np.linalg.norm(self.x_pred['x']))
-        #print(np.min(self.x_true['x']), np.max(self.x_true['x']), np.mean(self.x_true['x']), np.linalg.norm(self.x_true['x']))
-
         print(f"mse_ep: {self.mse_ep['x']:.3f} mse: {self.mse: .3f}")
         return self.mse_ep['x'], self.mse
-
-    def build_variable_damping(self, coef_damping=0.5):
-        list_var_damping = []
-        for var in self.list_var:
-            list_var_damping.append((var, "fwd", coef_damping))
-            list_var_damping.append((var, "bwd", coef_damping))
-        return list_var_damping
-
-    ### Plots ###
-    def plot_truth_vs_prediction(self, x_pred, save_fig=False, block=False):
-        assert self.N == 784
-        v_star = self.x_true['x'].reshape(28, 28)
-        v_hat = x_pred.reshape(28, 28)
-        fig, axes = plt.subplots(1, 3, figsize=(8, 8))
-        axes[0].imshow(v_star, cmap='gray')
-
-        if self.model_params['name'] == 'inpainting':
-            y_true = self.y_inp.reshape(28, 28)
-        elif self.model_params['name'] in ['denoising']:
-            y_true = self.y_true['y'].reshape(28, 28)
-        else:
-            y_true = v_star
-
-        axes[1].imshow(y_true, cmap='gray')
-        axes[2].imshow(v_hat, cmap='gray')
-
-        axes[0].set_title(r'$x$ true', Fontsize=25)
-        axes[1].set_title(r'$y$', Fontsize=25)
-        axes[2].set_title(r'$x$ pred', Fontsize=25)
-        mse = mean_squared_error(self.x_true['x'], x_pred)
-        # plt.title(f'MSE:{mse:.3f}')
-        plt.tight_layout()
-        axes[0].set_xticks([]), axes[0].set_yticks([])
-        axes[1].set_xticks([]), axes[1].set_yticks([])
-        axes[2].set_xticks([]), axes[2].set_yticks([])
-        # Save
-        id = int(time.time())
-        file_name = f"Images/{self.model_params['name']}/{self.data_params['name']}_{self.prior_params['name']}_{self.prior_params['id']}_Delta{self.Delta:.3f}_alpha{self.model_params['alpha']:.3f}_{id}.pdf"
-
-        if save_fig:
-            plt.savefig(file_name, format='pdf', dpi=1000,
-                        bbox_inches="tight", pad_inches=0.1)
-        # Show
-        if self.plot_truth_vs_pred:
-            if block:
-                plt.show(block=False)
-                input('Press enter to continue')
-                plt.close()
-            else:
-                plt.show()
-                plt.close()
-
-    def plot_evolution(self, output_tracking, save_fig=False, block=False):
-        assert self.N == 784
-        n = len(output_tracking)
-        w = 5
-        h = n // w
-        i = 0
-        fig, axs = plt.subplots(h, w, figsize=(16, 4))
-        for ax in axs.ravel():
-            x_pred = output_tracking.iloc[i]['r']
-            ax.imshow(x_pred.reshape(28, 28), cmap="gray")
-            ax.set_axis_off()
-            ax.set_xticks([]), ax.set_yticks([])
-            i += 1
-
-        plt.tight_layout()
-        # Save
-        id = int(time.time())
-        file_name = f"Images/{self.model_params['name']}/Evolution_{self.data_params['name']}_{self.prior_params['name']}_{self.prior_params['id']}_Delta{self.Delta:.3f}_alpha{self.model_params['alpha']:.3f}_{id}.pdf"
-
-        if save_fig:
-            plt.savefig(file_name, format='pdf', dpi=1000,
-                        bbox_inches="tight", pad_inches=0.1)
-        # Show
-        if self.plot_truth_vs_pred:
-            if block:
-                plt.show(block=False)
-                input('Press enter to continue')
-                plt.close()
-            else:
-                plt.show()
-                plt.close()
