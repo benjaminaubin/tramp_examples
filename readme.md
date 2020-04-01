@@ -7,11 +7,11 @@ ArXiv:
 
 This repo contains the few different examples presented in the above paper:
 
-### Python3 notebooks
+### Notebooks (Python 3.6)
 - [Sparse FFT](sparse_fft.ipynb) teacher-student scenario
 - [Sparse gradient](sparse_gradient.ipynb) teacher-student scenario
 - [Inpainting and denoising](inpainting_denoising_VAE.ipynb) on MNIST/FashionMNIST using a VAE prior trained the same dataset
 
-### Python3 scripts
+### Scripts (Python 3.6)
 - [Sparse linear](sparse_linear_benchmark.py) benchmark: TRAMP EP vs TRAMP SE vs Lasso Scikit-Learn vs PyMC3
 - [Sparse compressed sensing](sparse_compressed_sensing.py): produce MSE curves as a function of alpha at fixed rho
