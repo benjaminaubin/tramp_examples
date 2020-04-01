@@ -1,10 +1,12 @@
 from utils.plot.import_library_plot import *
 import numpy as np
 import pandas as pd
+import os
 import matplotlib.pyplot as plt
-from utils.functions import save_object, load_object, mean_squared_error
+from utils.functions import save_object, load_object
 
 from tramp.algos import CustomInit
+from tramp.algos.metrics import mean_squared_error
 from tramp.experiments import BayesOptimalScenario
 from tramp.priors import GaussBernouilliPrior
 from tramp.channels import GaussianChannel, LinearChannel, AbsChannel
@@ -91,9 +93,6 @@ class Phase_retrieval():
 
 
 def run_ep(scenario, settings, n_samples=10):
-    # Initialization with constant beliefs #
-    a_init = [("x", "bwd", 0.1)]
-    initializer = CustomInit(a_init=a_init)
     callback = EarlyStopping(wait_increase=10)
     tab_mse = {'mse_ep': [], 'mse': []}
 
@@ -112,15 +111,16 @@ def run_ep(scenario, settings, n_samples=10):
 
 
 def run_se(scenario, settings):
-    max_iter = settings["max_iter"]
     callback = EarlyStopping(wait_increase=10)
 
     # UNI-nformative Initialization #
     a_init = [("x", "bwd", 0.1)]
     initializer = CustomInit(a_init=a_init)
     data_se = scenario.run_se(
-        max_iter=max_iter, damping=settings['damping'],
-        initializer=initializer, callback=callback)
+        max_iter=settings["max_iter"],
+        damping=settings['damping'],
+        initializer=initializer,
+        callback=callback)
     mse_se_uni = data_se['x']['v']
     print(f'mse se uni:{mse_se_uni:.3e}')
 
@@ -128,8 +128,10 @@ def run_se(scenario, settings):
     a_init = [("x", "bwd", 10**3)]
     initializer = CustomInit(a_init=a_init)
     data_se = scenario.run_se(
-        max_iter=max_iter, damping=settings['damping'],
-        initializer=initializer, callback=callback)
+        max_iter=settings["max_iter"],
+        damping=settings['damping'],
+        initializer=initializer,
+        callback=callback)
     mse_se_inf = data_se['x']['v']
     print(f'mse se inf:{mse_se_inf:.3e}')
 
@@ -173,7 +175,7 @@ if __name__ == "__main__":
     ## Define parameters and settings ##
     params = {'N': 1000, 'rho': 0.6}
     settings_ep = {'damping': 0.3, 'max_iter': 200}
-    settings_exp = {'n_points': 10, 'n_samples': 1}
+    settings_exp = {'n_points': 50, 'n_samples': 1}
     seed = True
 
     ## Compute and plot MSE curve as a function of alpha ##
@@ -184,7 +186,7 @@ if __name__ == "__main__":
                                 n_points=settings_exp['n_points'], n_samples=settings_exp['n_samples'],
                                 seed=seed, save_data=save_data)
     else:
-        dic = load_data(
+        dic = load_object(
             f'Data/PR_rho={params["rho"]:.2f}_N={params["N"]}.pkl')
 
     ## Plot ##

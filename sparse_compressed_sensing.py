@@ -3,9 +3,10 @@ import numpy as np
 import pandas as pd
 import os
 import matplotlib.pyplot as plt
-from utils.functions import save_object, load_object, mean_squared_error
+from utils.functions import save_object, load_object
 
 from tramp.algos import CustomInit
+from tramp.algos.metrics import mean_squared_error
 from tramp.experiments import BayesOptimalScenario
 from tramp.priors import GaussBernouilliPrior
 from tramp.channels import GaussianChannel, LinearChannel
